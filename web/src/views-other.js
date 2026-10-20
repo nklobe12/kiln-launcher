@@ -74,14 +74,12 @@ async function viewSettings() {
 
   // Game / launcher
   if (Native.available) {
-    const ramGb = info && info.ramBytes ? info.ramBytes / 1073741824 : 0;
-    const memOptions = [0, 1024, 1536, 2048, 3072, 4096, 6144].filter((m) => !ramGb || m === 0 || m / 1024 <= ramGb * 0.75);
     page.appendChild(h('section.card.card-pad.settings-sec',
       h('h2', 'Playing'),
       h('div.set-row', h('div.t', h('strong', 'Account'), h('span', info && info.account ? `${info.account.name} (${info.account.type === 'microsoft' ? 'Microsoft' : info.account.type})` : 'Sign in with the Microsoft account that owns Minecraft.')),
         h('button.btn.btn-sm', { onclick: () => Native.call('account.manage').catch((e) => toast(e.message, { error: true })) }, info && info.account ? 'Manage' : 'Sign in')),
-      h('div.set-row', h('div.t', h('strong', 'Default memory'), h('span', 'Used by profiles that do not set their own.')),
-        selectEl('set-mem', memOptions.map((m) => ({ value: m, label: m ? `${m / 1024} GB` : 'Launcher default' })), s.memoryMb || 0, (v) => settings.set({ memoryMb: Number(v) }))),
+      profileMemorySupported() ? h('div.set-row', h('div.t', h('strong', 'Default memory'), h('span', 'Used by profiles set to Automatic. ' + memoryHint())),
+        selectEl('set-mem', memoryChoices(s.memoryMb || 0), s.memoryMb || 0, (v) => settings.set({ memoryMb: Number(v) }))) : null,
       h('div.set-row', h('div.t', h('strong', 'Launcher settings'), h('span', 'Renderer, resolution, touch and gamepad controls, Java runtimes and JIT options.')),
         h('button.btn.btn-sm', { onclick: () => Native.call('native.settings').catch((e) => toast(e.message, { error: true })) }, 'Open')),
       h('div.set-row', h('div.t', h('strong', 'All launcher profiles'), h('span', 'Edit profiles made outside Kiln, or tweak a profile’s renderer and controls.')),
@@ -130,6 +128,15 @@ async function viewSettings() {
   return page;
 }
 
+async function shareGameLog() {
+  try {
+    const shared = await Native.call('game.shareLog');
+    if (!shared) toast('No game log yet. Start the game once, then try again.');
+  } catch (e) {
+    toast(e.message, { error: true });
+  }
+}
+
 async function viewLogs() {
   const page = h('div.page');
   const box = h('div.log');
@@ -139,13 +146,17 @@ async function viewLogs() {
   routeCleanup.push(off);
   page.append(
     h('div.row-between', h('h1', 'Activity log'),
-      h('button.btn.btn-sm', {
-        onclick: async () => {
-          const text = LOG.map((l) => `${new Date(l.t).toISOString()} ${l.level.toUpperCase()} ${l.msg}`).join('\n');
-          try { await navigator.clipboard.writeText(text); toast('Copied'); } catch (e) { toast('Copy is not available here', { error: true }); }
-        },
-      }, 'Copy')),
-    h('div.muted', 'Requests, installs and errors from this session. Game output appears in the launcher’s own log screen while Minecraft runs.'),
+      h('div.row',
+        Native.available ? h('button.btn.btn-sm#share-game-log', { onclick: shareGameLog }, 'Share game log') : null,
+        h('button.btn.btn-sm', {
+          onclick: async () => {
+            const text = LOG.map((l) => `${new Date(l.t).toISOString()} ${l.level.toUpperCase()} ${l.msg}`).join('\n');
+            try { await navigator.clipboard.writeText(text); toast('Copied'); } catch (e) { toast('Copy is not available here', { error: true }); }
+          },
+        }, 'Copy'))),
+    h('div.muted', 'Requests, installs and errors from this session. ' + (Native.available
+      ? 'Share game log sends the log from the last time Minecraft ran, which shows why a launch stalled or crashed.'
+      : 'Game output appears in the launcher’s own log screen while Minecraft runs.')),
     box);
   return page;
 }

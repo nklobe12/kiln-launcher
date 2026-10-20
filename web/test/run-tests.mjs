@@ -364,6 +364,14 @@ console.log('Modrinth (no CurseForge key)');
     await page.click('.phead-actions button:has-text("Play")');
     await page.waitForSelector('.toast >> text=Starting Moss Hollow');
   });
+  await step('iPhone points memory to the launcher settings', async () => {
+    await page.goto(htmlUrl + '#/profiles');
+    await page.click('.pcard:has-text("Moss Test"), a:has-text("Moss Test")');
+    await page.waitForSelector('h1:has-text("Moss Test")');
+    await page.click('a.tab:has-text("Settings")');
+    await page.waitForSelector('text=Java memory is set for all profiles in Launcher settings');
+    expect(await page.locator('#ps-mem').count() === 0, 'iOS should not show a per-profile memory picker');
+  });
   await step('no script errors', async () => { expect(!errors.length, errors.join('\n')); });
   await ctx.close();
 }
@@ -402,7 +410,42 @@ console.log('Android (Android bridge)');
     await page.waitForSelector('.toast >> text=Starting Plain');
     const n = await native(page);
     expect(n.launcher.profiles.Plain.lastVersionId === '1.21.1', 'vanilla version wrong');
+    expect(!n.launcher.profiles.Plain.javaArgs, 'vanilla should use the launcher memory: ' + n.launcher.profiles.Plain.javaArgs);
     await shot(page, '30-android-profile');
+  });
+  await step('modded profile asks for 4 GB automatically', async () => {
+    await page.goto(htmlUrl + '#/profiles');
+    await page.click('button:has-text("New profile")');
+    await page.fill('#np-name', 'Modded');
+    await page.waitForSelector('#np-lv');
+    await confirmSheet(page, 'Create');
+    await page.waitForSelector('h1:has-text("Modded")');
+    await page.click('.phead-actions button:has-text("Play")');
+    await page.waitForSelector('.toast >> text=Starting Modded');
+    const n = await native(page);
+    expect(n.launcher.profiles.Modded.javaArgs === '-Xmx4096M', 'automatic modded memory wrong: ' + n.launcher.profiles.Modded.javaArgs);
+  });
+  await step('memory picker offers only what the phone can spare', async () => {
+    await page.click('a.tab:has-text("Settings")');
+    await page.waitForSelector('#ps-mem');
+    const opts = await page.$$eval('#ps-mem option', (os) => os.map((o) => o.textContent));
+    expect(JSON.stringify(opts) === JSON.stringify(['Automatic', '2 GB', '3 GB', '4 GB', '6 GB']), 'memory options: ' + opts.join(', '));
+    await page.selectOption('#ps-mem', '6144');
+    await page.waitForSelector('.toast >> text=Saved');
+    const meta = JSON.parse(await readFile(page, 'kiln/modded/kiln.json'));
+    expect(meta.memoryMb === 6144, 'memory not saved: ' + meta.memoryMb);
+    const n = await native(page);
+    expect(n.launcher.profiles.Modded.javaArgs === '-Xmx6144M', 'chosen memory not passed: ' + n.launcher.profiles.Modded.javaArgs);
+    await shot(page, '31-android-profile-settings');
+  });
+  await step('shares the game log', async () => {
+    await page.goto(htmlUrl + '#/logs');
+    await page.click('#share-game-log');
+    await page.waitForSelector('.toast >> text=No game log yet');
+    await page.evaluate(() => { window.__native.hasGameLog = true; });
+    await page.click('#share-game-log');
+    const n = await native(page);
+    expect(n.calls.filter((c) => c === 'game.shareLog').length === 2, 'game.shareLog not called');
   });
   await step('no script errors', async () => { expect(!errors.length, errors.join('\n')); });
   await ctx.close();

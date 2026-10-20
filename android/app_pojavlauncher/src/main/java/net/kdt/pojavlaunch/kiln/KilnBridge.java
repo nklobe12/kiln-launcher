@@ -154,6 +154,7 @@ public class KilnBridge {
             case "loader.runInstaller":
             case "file.share":
             case "file.pick":
+            case "game.shareLog":
                 return true;
             default:
                 return false;
@@ -208,7 +209,10 @@ public class KilnBridge {
                 info.put("engine", "amethyst");
                 info.put("gameRoot", gameRoot().getAbsolutePath());
                 info.put("jit", true);
-                info.put("ramBytes", Runtime.getRuntime().maxMemory());
+                info.put("ramBytes", (long) Tools.getTotalDeviceMemory(activity) * 1048576L);
+                info.put("memoryMb", LauncherPreferences.PREF_RAM_ALLOCATION);
+                info.put("memoryCeilingMb", KilnMemory.ceilingMb(activity));
+                info.put("profileMemory", true);
                 info.put("device", Build.MANUFACTURER + " " + Build.MODEL);
                 info.put("osVersion", "Android " + Build.VERSION.RELEASE);
                 info.put("curseforgeApiKey", readBundledKey(activity));
@@ -387,6 +391,12 @@ public class KilnBridge {
             }
             case "file.share": {
                 Tools.openPath(activity, resolve(p.getString("path")), true);
+                return true;
+            }
+            case "game.shareLog": {
+                File log = new File(Tools.DIR_GAME_HOME, "latestlog.txt");
+                if (!log.isFile() || log.length() == 0) return false;
+                Tools.shareLog(activity);
                 return true;
             }
             case "file.pick": {

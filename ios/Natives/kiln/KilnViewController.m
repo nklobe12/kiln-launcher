@@ -247,7 +247,7 @@ typedef void (^KilnReply)(id _Nullable result, NSString * _Nullable error);
 
     // UI methods run on the main thread
     NSSet *uiMethods = [NSSet setWithArray:@[@"game.launch", @"account.manage", @"native.settings",
-        @"native.profiles", @"native.openURL", @"loader.runInstaller", @"file.share", @"file.pick", @"info",
+        @"native.profiles", @"native.openURL", @"loader.runInstaller", @"file.share", @"file.pick", @"game.shareLog", @"info",
         @"profiles.list", @"profiles.save", @"profiles.delete", @"profiles.select"]];
     if ([uiMethods containsObject:method]) {
         [self handleUI:method params:params reply:reply];
@@ -310,6 +310,7 @@ typedef void (^KilnReply)(id _Nullable result, NSString * _Nullable error);
                 @"ios26": @(DeviceHasJITFlags(JIT_FLAG_IS_IOS_26)),
                 @"account": [self accountInfo],
                 @"ramBytes": @(NSProcessInfo.processInfo.physicalMemory),
+                @"profileMemory": @NO,
                 @"curseforgeApiKey": [self bundledCurseForgeKey],
                 @"device": UIDevice.currentDevice.model ?: @"",
                 @"osVersion": UIDevice.currentDevice.systemVersion ?: @""
@@ -418,6 +419,16 @@ typedef void (^KilnReply)(id _Nullable result, NSString * _Nullable error);
             NSString *error;
             NSString *path = [self resolve:params[@"path"] error:&error];
             if (!path) { reply(nil, error); return; }
+            UIActivityViewController *vc = [[UIActivityViewController alloc]
+                initWithActivityItems:@[[NSURL fileURLWithPath:path]] applicationActivities:nil];
+            vc.popoverPresentationController.sourceView = self.view;
+            vc.popoverPresentationController.sourceRect = CGRectMake(CGRectGetMidX(self.view.bounds), CGRectGetMidY(self.view.bounds), 1, 1);
+            [self presentViewController:vc animated:YES completion:nil];
+            reply(@YES, nil);
+        } else if ([method isEqualToString:@"game.shareLog"]) {
+            NSString *path = [NSString stringWithFormat:@"%s/latestlog.txt", getenv("AME_HOME")];
+            NSDictionary *attrs = [NSFileManager.defaultManager attributesOfItemAtPath:path error:nil];
+            if (attrs == nil || attrs.fileSize == 0) { reply(@NO, nil); return; }
             UIActivityViewController *vc = [[UIActivityViewController alloc]
                 initWithActivityItems:@[[NSURL fileURLWithPath:path]] applicationActivities:nil];
             vc.popoverPresentationController.sourceView = self.view;

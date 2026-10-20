@@ -163,6 +163,9 @@ public class LauncherPreferences {
         if (deviceRam < 3064) return 936;
         if (deviceRam < 4096) return 1144;
         if (deviceRam < 6144) return 1536;
+        // Kiln: phones with 8 GB or more can give modded Minecraft more room
+        if (deviceRam >= 11000) return 4096;
+        if (deviceRam >= 7000) return 3072;
         return 2048; //Default RAM allocation for 64 bits
     }
 

@@ -27,6 +27,8 @@ Kiln's engine is Amethyst. It is one of the few apps whose JIT works on iOS 26 a
 3. Tap **Browse → Modpacks**, install one, then tap **Play**.
 4. Kiln opens StikDebug with the JIT script. StikDebug attaches, JIT turns on, and you're taken back to Kiln, where the game starts.
 
+If something goes wrong in the game, open **Activity log → Share game log** in Kiln to send the log from the last run.
+
 If Kiln just waits on "Waiting for JIT":
 - Open StikDebug yourself, tap **Enable JIT** and pick **Kiln**.
 - If StikDebug asks for a script, long-press Kiln → **Assign Script**, then choose `UniversalJIT26.js`. Kiln puts a copy in its Documents folder. On some StikDebug builds the built-in script is named `Amethyst-MeloNX.js`.
@@ -35,7 +37,7 @@ After the iPhone restarts, open StikDebug once on Wi-Fi with LocalDevVPN on. Thi
 
 ## Tips for the 17 Pro Max
 
-- 12 GB of RAM lets most packs run with **3–4 GB** for Java (profile → Settings → Memory). Don't go higher; iOS ends apps that use too much.
+- 12 GB of RAM lets most packs run with **3–4 GB** for Java. On iPhone this is one setting for every profile: Kiln → Settings → Launcher settings → Java Tweaks, turn off **Auto RAM**, then set **Memory allocation**. Don't go higher; iOS ends apps that use too much.
 - Pick your renderer in **Settings → Launcher settings**. MobileGlues or Zink work best for 1.17+.
 - Forge/NeoForge packs run their installer the first time you tap Play. When it finishes, swipe Kiln away, reopen it and tap Play again.
 

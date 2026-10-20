@@ -50,7 +50,8 @@
         return {
           platform: PLATFORM, engine: 'amethyst', appVersion: '1.0 (test)', gameRoot: PLATFORM === 'ios' ? '/var/mobile/Containers/Data/Application/KILN/Library/Application Support/minecraft' : '/storage/emulated/0/Android/data/com.nklobe.kiln/files/.minecraft',
           jit: false, txm: PLATFORM === 'ios', ios26: PLATFORM === 'ios', account: window.__noAccount ? null : { name: 'Klobe', type: 'microsoft', avatar: '' },
-          ramBytes: 12 * 1073741824, curseforgeApiKey: '', device: PLATFORM === 'ios' ? 'iPhone' : 'Google Pixel 9', osVersion: PLATFORM === 'ios' ? '26.0' : 'Android 16',
+          ramBytes: 12 * 1073741824, curseforgeApiKey: '',
+          ...(PLATFORM === 'ios' ? { profileMemory: false } : { profileMemory: true, memoryMb: 4096, memoryCeilingMb: 6912 }), device: PLATFORM === 'ios' ? 'iPhone' : 'Google Pixel 9', osVersion: PLATFORM === 'ios' ? '26.0' : 'Android 16',
         };
       case 'http': {
         const r = await window.__kilnFixture({ url: params.url, method: params.method || 'GET', headers: params.headers || {}, body: params.body || null });
@@ -146,6 +147,7 @@
         return { started: true, restartRequired: PLATFORM === 'ios' };
       case 'account.manage': case 'native.settings': case 'native.profiles': case 'native.openURL': case 'file.share':
         return true;
+      case 'game.shareLog': return !!window.__native.hasGameLog;
       case 'file.pick': return window.__native.pick;
       default:
         throw new Error('Unknown method ' + method);

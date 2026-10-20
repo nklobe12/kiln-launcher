@@ -6,7 +6,9 @@
 4. Tap **Browse**, install a modpack or make a profile, then tap **Play**.
 
 Notes
-- Kiln.apk is for 64-bit ARM (arm64) phones running Android 8 or newer, which is nearly every phone from the last several years. Give Java about half your RAM (profile → Settings → Memory).
+- Kiln.apk is for 64-bit ARM (arm64) phones running Android 8 or newer, which is nearly every phone from the last several years.
+- Memory: modded profiles get 4 GB automatically when the phone has room (profile → Settings → Memory to change it). Kiln never gives Java more than about 60% of the phone's RAM, and never less than the launcher's own setting.
+- Forge and NeoForge packs sit on "Loading bootstrap resources" while every mod loads. The first launch of a big pack can take 5–10 minutes on a phone. If it never moves, open **Activity log → Share game log** and send the log.
 - You can change the renderer and touch controls in **Settings → Launcher settings**.
 - Forge and NeoForge run their installer the first time you tap Play. Wait for it to finish, then tap Play again.
 - Kiln isn't from the Play Store, so Android or Play Protect may warn you before installing. Tap **Install anyway**.

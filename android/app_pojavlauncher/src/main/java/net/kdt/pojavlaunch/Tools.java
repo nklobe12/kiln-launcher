@@ -416,10 +416,13 @@ public final class Tools {
             localeString = R.string.memory_warning_msg;
         }
 
-        if(LauncherPreferences.PREF_RAM_ALLOCATION > freeDeviceMemory) {
+        // Kiln: warn about the heap this launch will really use (see KilnMemory)
+        final int launchRam = net.kdt.pojavlaunch.kiln.KilnMemory.effectiveMb(activity,
+                Tools.isValidString(minecraftProfile.javaArgs) ? minecraftProfile.javaArgs : LauncherPreferences.PREF_CUSTOM_JAVA_ARGS);
+        if(launchRam > freeDeviceMemory) {
             int finalDeviceMemory = freeDeviceMemory;
             LifecycleAwareAlertDialog.DialogCreator dialogCreator = (dialog, builder) ->
-                builder.setMessage(activity.getString(localeString, finalDeviceMemory, LauncherPreferences.PREF_RAM_ALLOCATION))
+                builder.setMessage(activity.getString(localeString, finalDeviceMemory, launchRam))
                         .setPositiveButton(android.R.string.ok, (d, w)->{});
 
             if(LifecycleAwareAlertDialog.haltOnDialog(activity.getLifecycle(), activity, dialogCreator)) {

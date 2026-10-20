@@ -32,6 +32,7 @@ function applyTheme() {
 // In the app it lives in <game folder>/kiln/<id>/ with a kiln.json next to the
 // game files, and is mirrored into the launcher's profile list so Play works.
 const PROFILE_ROOT = 'kiln';
+const AUTO_MODDED_MB = 4096;
 const RESERVED_DIRS = new Set(['_tmp', '_import', '_installers', '_exports']);
 
 function newProfile({ name, mc, loader = { type: 'vanilla', version: '' }, icon = '', modpack = null }) {
@@ -100,7 +101,10 @@ const Profiles = (() => {
 
   function launcherProfile(p) {
     const s = settings.get();
-    const mem = p.memoryMb || s.memoryMb;
+    // Automatic: modded profiles ask for 4 GB. The app only raises Java's memory
+    // to what the phone can spare and never below its own setting.
+    const modded = p.loader && p.loader.type && p.loader.type !== 'vanilla';
+    const mem = p.memoryMb || s.memoryMb || (modded ? AUTO_MODDED_MB : 0);
     const args = [p.javaArgs || '', mem ? `-Xmx${mem}M` : ''].filter(Boolean).join(' ').trim();
     const out = { name: p.name, lastVersionId: p.versionId || p.mc, type: 'custom' };
     if (args) out.javaArgs = args;

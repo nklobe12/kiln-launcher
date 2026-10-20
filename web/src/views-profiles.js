@@ -479,14 +479,40 @@ function profileMenu(p) {
   });
 }
 
+// Memory picker choices. 0 = Automatic. Values above what the phone can spare
+// are hidden (the app caps them anyway), except the one already chosen.
+function memoryChoices(current) {
+  const info = Native.cachedInfo;
+  const ramMb = info && info.ramBytes ? info.ramBytes / 1048576 : 0;
+  const ceiling = (info && info.memoryCeilingMb) || (ramMb ? ramMb * 0.6 : 0);
+  const values = [0, 2048, 3072, 4096, 6144, 8192].filter((m) => m === 0 || !ceiling || m <= ceiling);
+  if (current && !values.includes(current)) values.push(current);
+  values.sort((a, b) => a - b);
+  return values.map((m) => ({ value: m, label: m ? `${Math.round((m / 1024) * 10) / 10} GB` : 'Automatic' }));
+}
+
+function memoryHint() {
+  const info = Native.cachedInfo;
+  const ceiling = info && info.memoryCeilingMb;
+  const most = ceiling ? ` This phone can spare up to about ${Math.floor(ceiling / 1024 * 10) / 10} GB.` : '';
+  return `Automatic gives modded profiles 4 GB when the phone has room.${most}`;
+}
+
+// iOS sets Java memory once for every profile, in the launcher settings.
+function profileMemorySupported() {
+  const info = Native.cachedInfo;
+  return !(info && info.profileMemory === false);
+}
+
 function profileSettings(p) {
   const info = Native.cachedInfo;
-  const ramGb = info && info.ramBytes ? info.ramBytes / 1073741824 : 0;
-  const memOptions = [0, 1024, 1536, 2048, 3072, 4096, 6144, 8192].filter((m) => !ramGb || m === 0 || m / 1024 <= ramGb * 0.75);
   const args = h('textarea.input#ps-args', { placeholder: '-XX:+UseG1GC' }, p.javaArgs || '');
   return h('div.card.card-pad.settings-sec',
-    h('div.set-row', h('div.t', h('strong', 'Memory'), h('span', 'How much RAM Java can use. Phones with 6 GB or less run best at 2–3 GB.')),
-      selectEl('ps-mem', memOptions.map((m) => ({ value: m, label: m ? `${m / 1024} GB` : 'Launcher default' })), p.memoryMb || 0, async (v) => { p.memoryMb = Number(v); await Profiles.save(p); toast('Saved'); })),
+    profileMemorySupported()
+      ? h('div.set-row', h('div.t', h('strong', 'Memory'), h('span', 'How much RAM Java can use. ' + memoryHint())),
+        selectEl('ps-mem', memoryChoices(p.memoryMb || 0), p.memoryMb || 0, async (v) => { p.memoryMb = Number(v); await Profiles.save(p); toast('Saved'); }))
+      : h('div.set-row', h('div.t', h('strong', 'Memory'), h('span', 'On iPhone and iPad, Java memory is set for all profiles in Launcher settings.')),
+        h('button.btn.btn-sm', { onclick: () => Native.call('native.settings').catch((e) => toast(e.message, { error: true })) }, 'Open')),
     h('div.set-row', { style: { flexDirection: 'column', alignItems: 'stretch' } },
       h('div.t', h('strong', 'Extra Java arguments'), h('span', 'Added when this profile starts.')),
       args,
