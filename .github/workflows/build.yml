@@ -3,6 +3,7 @@ name: Build Kiln (iOS + Android)
 on:
   push:
     branches: [main]
+    paths-ignore: ['docs/**', '*.md', 'LICENSE']
   workflow_dispatch:
 
 concurrency:

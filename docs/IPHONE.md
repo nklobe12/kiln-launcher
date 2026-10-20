@@ -13,12 +13,12 @@ Kiln's engine is Amethyst. It is one of the few apps whose JIT works on iOS 26 a
 
 ## One-time setup
 
-1. **Turn on Developer Mode** on the iPhone: Settings → Privacy & Security → Developer Mode → On, then restart.
-2. **Install SideStore** with **iloader** on your computer ([github.com/nab138/iloader](https://github.com/nab138/iloader)). Plug in the iPhone, sign in with your Apple ID and install SideStore. iloader also places the *pairing file* that SideStore and StikDebug need.
+1. **Install SideStore with iloader** on your computer ([github.com/nab138/iloader](https://github.com/nab138/iloader)). On Windows, install iTunes first so the computer can see the iPhone. Plug the iPhone in, tap **Trust**, sign in to iloader with your Apple ID and install **SideStore**. Pick plain SideStore, not "LiveContainer + SideStore", so you keep a free app slot. iloader also places the *pairing file* SideStore needs.
+2. **Turn on Developer Mode** on the iPhone: Settings → Privacy & Security → Developer Mode → On, then restart. The switch only shows up after step 1. If iOS says the developer isn't trusted, go to Settings → General → VPN & Device Management and trust your Apple ID.
 3. **Install LocalDevVPN** from the App Store. It's free, and SideStore and StikDebug talk to the phone through it.
-4. **Install StikDebug** in SideStore from its official source ([github.com/StikDebug/StikDebug](https://github.com/StikDebug/StikDebug)). Then use iloader again to place the pairing file for StikDebug.
+4. **Install StikDebug** in SideStore from its official source ([github.com/StikDebug/StikDebug](https://github.com/StikDebug/StikDebug)). Then, in iloader, place the pairing file for StikDebug.
 5. In **StikDebug → Settings**, turn on **Always Run Scripts**. If the setting is there, also turn on **Silent Audio**; it keeps the debugger alive on TXM iPhones.
-6. **Install Kiln**: open the [latest release](../../releases/tag/nightly) in Safari, download `Kiln.ipa`, then open it with SideStore (Share → SideStore, or SideStore → + → pick the file).
+6. **Install Kiln**: on the iPhone, open [Kiln.ipa](https://github.com/nklobe12/kiln-launcher/releases/download/nightly/Kiln.ipa) in Safari to download it, then open it with SideStore (Share → SideStore, or SideStore → My Apps → + → pick the file). Installing through SideStore lets SideStore refresh Kiln for you.
 
 ## Playing
 
@@ -42,4 +42,5 @@ After the iPhone restarts, open StikDebug once on Wi-Fi with LocalDevVPN on. Thi
 ## Limits to know about
 
 - Apple can change how JIT works in any iOS update. StikDebug and Amethyst have needed updates for iOS 26, so after updating iOS, check that both are on their latest versions.
-- With a free Apple ID, refresh Kiln in SideStore at least every 7 days, or it won't open until you do.
+- With a free Apple ID, refresh Kiln in SideStore at least every 7 days, or it won't open until you do. Open SideStore with LocalDevVPN on and tap **Refresh All**.
+- Paid "signing services" can install Kiln, but their certificates can't get JIT, so the game won't start. Use SideStore with your own Apple ID.
