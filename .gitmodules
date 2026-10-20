@@ -1,0 +1,20 @@
+[submodule "ios/Natives/external/DBNumberedSlider"]
+	path = ios/Natives/external/DBNumberedSlider
+	url = https://github.com/khanhduytran0/DBNumberedSlider
+[submodule "ios/Natives/external/fishhook"]
+	path = ios/Natives/external/fishhook
+	url = https://github.com/khanhduytran0/fishhook
+	branch = jev/main
+[submodule "ios/Natives/external/AFNetworking"]
+	path = ios/Natives/external/AFNetworking
+	url = https://github.com/AFNetworking/AFNetworking
+[submodule "ios/Natives/external/MobileGlues"]
+	path = ios/Natives/external/MobileGlues
+	url = https://github.com/MobileGL-Dev/MobileGlues
+	branch = main
+[submodule "android/MioLibPatcher"]
+	path = android/MioLibPatcher
+	url = https://github.com/AngelAuraMC/MioLibPatcher.git
+[submodule "android/androidnsbypass"]
+	path = android/androidnsbypass
+	url = https://github.com/alexytomi/androidnsbypass.git

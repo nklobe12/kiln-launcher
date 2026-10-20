@@ -1,0 +1,15 @@
+# Built web UI (CI runs python3 web/build.py)
+web/dist/
+web/test/node_modules/
+web/test/out/
+# Copied into the Android app at build time
+android/app_pojavlauncher/src/main/assets/kiln/
+# Build outputs
+ios/artifacts/
+ios/Natives/build/
+ios/depends/
+android/**/build/
+android/.gradle/
+*.ipa
+*.apk
+.DS_Store

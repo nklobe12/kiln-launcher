@@ -1,0 +1,159 @@
+name: Build Kiln (iOS + Android)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  web:
+    name: Web UI checks
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build web UI
+        run: python3 web/build.py
+      - name: Test web UI (headless Chromium)
+        run: |
+          cd web/test
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+          node run-tests.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: web-ui-screenshots
+          path: web/test/out/
+          if-no-files-found: ignore
+
+  ios:
+    name: iOS (Kiln.ipa)
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Select Xcode
+        run: |
+          X=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$X" ]; then X=$(ls -d /Applications/Xcode_16*.app | sort -V | tail -1); fi
+          echo "Using $X"
+          sudo xcode-select -s "$X"
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-path
+
+      - name: Set up JDK 8 (builds the Java side of the launcher)
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '8'
+          architecture: aarch64
+
+      - name: Install build tools
+        run: |
+          brew install ldid make
+          echo "$(brew --prefix)/opt/make/libexec/gnubin" >> "$GITHUB_PATH"
+
+      - name: Build web UI
+        env:
+          CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
+        run: python3 web/build.py
+
+      - name: Build IPA
+        working-directory: ios
+        run: |
+          make --version | head -1
+          make -j"$(sysctl -n hw.ncpu)" package PLATFORM=2 BOOTJDK="$JAVA_HOME/bin"
+          ls -la artifacts
+          cp artifacts/org.angelauramc.amethyst-*-ios.ipa "$GITHUB_WORKSPACE/Kiln.ipa"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Kiln-ios
+          path: Kiln.ipa
+          compression-level: 0
+
+  android:
+    name: Android (Kiln.apk)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Get JRE 8 for Android
+        uses: dawidd6/action-download-artifact@v9
+        with:
+          workflow: build.yml
+          path: android/app_pojavlauncher/src/main/assets/components/jre
+          workflow_conclusion: completed
+          repo: AngelAuraMC/angelauramc-openjdk-build
+          branch: buildjre8
+          name: jre8-pojav
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          validate-wrappers: false
+          gradle-version: "9.6.1"
+
+      - name: Build web UI
+        env:
+          CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
+        run: python3 web/build.py
+
+      - name: Build APK
+        working-directory: android
+        env:
+          CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
+        run: |
+          ./scripts/languagelist_updater.sh
+          gradle :app_pojavlauncher:assembleDebug
+          cp app_pojavlauncher/build/outputs/apk/debug/app_pojavlauncher-debug.apk "$GITHUB_WORKSPACE/Kiln.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Kiln-android
+          path: Kiln.apk
+
+  release:
+    name: Publish nightly release
+    needs: [ios, android]
+    if: ${{ !cancelled() && (needs.ios.result == 'success' || needs.android.result == 'success') }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - run: ls -la dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly
+          name: Kiln nightly
+          prerelease: true
+          make_latest: true
+          body: |
+            Latest build of Kiln from ${{ github.sha }}.
+
+            - **Kiln.ipa**: iPhone/iPad. Install with SideStore or AltStore, then start it with JIT from StikDebug (see docs/IPHONE.md).
+            - **Kiln.apk**: Android. Open the file on your phone to install.
+          files: dist/*
