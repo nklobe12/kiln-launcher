@@ -63,13 +63,23 @@ typedef void (^KilnReply)(id _Nullable result, NSString * _Nullable error);
     self.title = @"Kiln";
     _downloads = [NSMutableDictionary new];
     _ioQueue = dispatch_queue_create("kiln.io", DISPATCH_QUEUE_CONCURRENT);
-    NSURLSessionConfiguration *config = NSURLSessionConfiguration.defaultSessionConfiguration;
-    config.HTTPMaximumConnectionsPerHost = 6;
-    config.timeoutIntervalForRequest = 60;
-    NSOperationQueue *queue = [NSOperationQueue new];
-    queue.maxConcurrentOperationCount = 1;
-    _downloadSession = [NSURLSession sessionWithConfiguration:config delegate:self delegateQueue:queue];
     return self;
+}
+
+// Created on first download; the session retains its delegate, so this stays
+// lazy to avoid keeping unused instances alive.
+- (NSURLSession *)session {
+    @synchronized (self) {
+        if (!_downloadSession) {
+            NSURLSessionConfiguration *config = NSURLSessionConfiguration.defaultSessionConfiguration;
+            config.HTTPMaximumConnectionsPerHost = 6;
+            config.timeoutIntervalForRequest = 60;
+            NSOperationQueue *queue = [NSOperationQueue new];
+            queue.maxConcurrentOperationCount = 1;
+            _downloadSession = [NSURLSession sessionWithConfiguration:config delegate:self delegateQueue:queue];
+        }
+        return _downloadSession;
+    }
 }
 
 - (NSString *)imageName {
@@ -515,7 +525,7 @@ typedef void (^KilnReply)(id _Nullable result, NSString * _Nullable error);
         record.reply = reply;
         NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
         [request setValue:@"Kiln/1.0 (Amethyst iOS)" forHTTPHeaderField:@"User-Agent"];
-        NSURLSessionDownloadTask *task = [self.downloadSession downloadTaskWithRequest:request];
+        NSURLSessionDownloadTask *task = [[self session] downloadTaskWithRequest:request];
         @synchronized (self.downloads) {
             self.downloads[@(task.taskIdentifier)] = record;
         }
