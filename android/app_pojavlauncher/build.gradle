@@ -114,6 +114,12 @@ android {
         versionName getVersionName()
         multiDexEnabled true //important
         resValue 'string', 'curseforge_api_key', getCFApiKey()
+        // Kiln: ship one APK for 64-bit ARM phones only. A universal APK
+        // with all four ABIs is ~170 MB, which stalls downloads and
+        // Play Protect scans on phones.
+        ndk {
+            abiFilters 'arm64-v8a'
+        }
         externalNativeBuild {
             ndkBuild {
                 // Fix for Windows command line length limit
@@ -192,6 +198,16 @@ android {
             keepDebugSymbols += ['**/libcutils.so']
             pickFirsts += ['**/libbytehook.so']
         }
+    }
+
+    // Kiln: drop the other architectures' LWJGL natives (bundled as assets by
+    // the lwjgl-*-natives AARs) and JRE binaries; arm64 copies are kept.
+    androidResources {
+        ignoreAssetsPatterns.addAll([
+            '!.svn', '!.git', '!.ds_store', '!*.scc', '.*', '<dir>_*', '!CVS', '!thumbs.db', '!picasa.ini', '!*~',
+            '<dir>x86', '<dir>x86_64', '<dir>armeabi-v7a', '<dir>armeabi',
+            'bin-arm.tar.xz', 'bin-x86.tar.xz', 'bin-x86_64.tar.xz'
+        ])
     }
 
     buildFeatures {

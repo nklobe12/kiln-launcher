@@ -110,6 +110,9 @@ jobs:
           branch: buildjre8
           name: jre8-pojav
 
+      - name: Drop non-arm64 JRE binaries
+        run: rm -f android/app_pojavlauncher/src/main/assets/components/jre/bin-{arm,x86,x86_64}.tar.xz
+
       - uses: gradle/actions/setup-gradle@v4
         with:
           validate-wrappers: false
@@ -128,6 +131,32 @@ jobs:
           ./scripts/languagelist_updater.sh
           gradle :app_pojavlauncher:assembleDebug
           cp app_pojavlauncher/build/outputs/apk/debug/app_pojavlauncher-debug.apk "$GITHUB_WORKSPACE/Kiln.apk"
+
+      - name: Keep only arm64 in Kiln.apk
+        run: |
+          set -euo pipefail
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          OTHER=' (lib/(x86|x86_64|armeabi-v7a|armeabi|mips|mips64)/|assets/components/lwjgl-[^/]+-natives/(x86|x86_64|armeabi-v7a)/|assets/components/jre/bin-(arm|x86|x86_64)\.tar\.xz)'
+          echo "Built: $(stat -c %s Kiln.apk) bytes"
+          if unzip -l Kiln.apk | grep -Eq "$OTHER"; then
+            echo "::warning::Other-architecture files were packaged; stripping them and re-signing"
+            zip -q -d Kiln.apk 'lib/x86/*' 'lib/x86_64/*' 'lib/armeabi-v7a/*' 'lib/armeabi/*' 'lib/mips/*' 'lib/mips64/*' \
+              'assets/components/lwjgl-*-natives/x86/*' 'assets/components/lwjgl-*-natives/x86_64/*' \
+              'assets/components/lwjgl-*-natives/armeabi-v7a/*' \
+              'assets/components/jre/bin-arm.tar.xz' 'assets/components/jre/bin-x86.tar.xz' 'assets/components/jre/bin-x86_64.tar.xz' \
+              'META-INF/*.SF' 'META-INF/*.RSA' 'META-INF/MANIFEST.MF' || true
+            "$BT/zipalign" -f -p 4 Kiln.apk Kiln-aligned.apk
+            "$BT/apksigner" sign --ks android/app_pojavlauncher/debug.keystore --ks-pass pass:android \
+              --key-pass pass:android --ks-key-alias androiddebugkey --out Kiln.apk Kiln-aligned.apk
+            rm -f Kiln-aligned.apk Kiln.apk.idsig
+          fi
+          if unzip -l Kiln.apk | grep -Eq "$OTHER"; then echo "::error::Kiln.apk still has other-architecture files"; exit 1; fi
+          for f in lib/arm64-v8a/libpojavexec.so assets/components/jre/bin-arm64.tar.xz assets/components/jre/universal.tar.xz assets/kiln/index.html; do
+            unzip -l Kiln.apk "$f" > /dev/null || { echo "::error::Kiln.apk is missing $f"; exit 1; }
+          done
+          unzip -l Kiln.apk | grep -Eq ' assets/components/lwjgl-3.3.3-natives/arm64-v8a/' || { echo "::error::Kiln.apk is missing arm64 LWJGL natives"; exit 1; }
+          "$BT/apksigner" verify --print-certs Kiln.apk | head -3
+          echo "Kiln.apk: $(stat -c %s Kiln.apk) bytes"
 
       - uses: actions/upload-artifact@v4
         with:
