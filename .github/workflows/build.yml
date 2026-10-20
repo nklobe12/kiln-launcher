@@ -142,9 +142,17 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
+          pattern: Kiln-*
           path: dist
           merge-multiple: true
       - run: ls -la dist
+      - name: Remove stale files from the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for id in $(gh api repos/${{ github.repository }}/releases/tags/nightly --jq '.assets[] | select(.name | test("^Kiln\\.(apk|ipa)$") | not) | .id' 2>/dev/null); do
+            gh api -X DELETE repos/${{ github.repository }}/releases/assets/$id
+          done
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: nightly

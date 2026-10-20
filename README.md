@@ -4,6 +4,8 @@ Kiln is a CurseForge-style mod manager that also **launches Minecraft: Java Edit
 
 It was made by reverse-engineering the CurseForge desktop app (1.324.0, Electron) with [rea](https://github.com/morluto/rea). Kiln recreates CurseForge's screens and features in a single web UI. The phone apps run that UI on top of the open-source [Amethyst](https://github.com/AngelAuraMC) launcher engine, which is the successor to PojavLauncher. Amethyst is what runs Java, LWJGL and OpenGL on mobile. See [docs/REA-ANALYSIS.md](docs/REA-ANALYSIS.md) for what rea found and how each piece maps over.
 
+**Download:** [Kiln for Android (Kiln.apk)](https://github.com/nklobe12/kiln-launcher/releases/download/nightly/Kiln.apk) · [Kiln for iPhone (Kiln.ipa)](https://github.com/nklobe12/kiln-launcher/releases/download/nightly/Kiln.ipa)
+
 | Platform | How to get it | Plays the game |
 |---|---|---|
 | iPhone / iPad | `Kiln.ipa` from [Releases](../../releases), installed with SideStore | Yes. Needs JIT from StikDebug. See [docs/IPHONE.md](docs/IPHONE.md) |
