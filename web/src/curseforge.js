@@ -244,12 +244,14 @@ function modAuthor(mod) {
 
 // Versions a project supports, newest first (from its file index)
 function projectVersions(mod) {
+  if (mod && mod.source === 'modrinth') return [...new Set(mod.gameVersions || [])].sort((a, b) => cmpVersion(b, a));
   const set = new Set();
   (mod.latestFilesIndexes || []).forEach((i) => i.gameVersion && /^\d+\.\d+(\.\d+)?$/.test(i.gameVersion) && set.add(i.gameVersion));
   return [...set].sort((a, b) => cmpVersion(b, a));
 }
 
 function projectLoaders(mod) {
+  if (mod && mod.source === 'modrinth') return (mod.loaders || []).map((l) => LOADER_NAMES[l] || l);
   const set = new Set();
   (mod.latestFilesIndexes || []).forEach((i) => i.modLoader && LOADERS[i.modLoader] && set.add(LOADERS[i.modLoader]));
   return [...set];

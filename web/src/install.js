@@ -3,8 +3,10 @@
 function contentItem(mod, file, extra = {}) {
   const cls = classById(mod.classId) || classById(6);
   return {
+    source: mod.source || 'curseforge',
     projectId: mod.id,
     fileId: file.id,
+    versionId: mod.source === 'modrinth' ? file.id : undefined,
     name: mod.name,
     slug: mod.slug,
     author: modAuthor(mod),
@@ -18,6 +20,7 @@ function contentItem(mod, file, extra = {}) {
     gameVersions: file.gameVersions || [],
     size: file.fileLength || 0,
     sha1: fileSha1(file),
+    sha512: file.sha512 || null,
     url: fileDownloadUrl(file),
     manual: !fileDownloadUrl(file),
     website: projectWebUrl(mod),
@@ -57,6 +60,50 @@ async function planInstall(profile, mod, chosenFile = null) {
   }
   await add(mod, chosenFile, 'selected');
   return { items, warnings };
+}
+
+// Same as planInstall, for Modrinth projects
+async function mrPlanInstall(profile, mod, chosenFile = null) {
+  const installed = new Set((profile.content || []).map((c) => c.projectId));
+  const seen = new Set();
+  const items = [];
+  const warnings = [];
+  async function add(project, file, reason) {
+    if (seen.has(project.id)) return;
+    seen.add(project.id);
+    if (installed.has(project.id) && reason !== 'selected') return;
+    const f = file || (await mrBestFile(project, profile));
+    if (!f) {
+      items.push({ mod: project, file: null, reason, problem: `No file for Minecraft ${profile.mc}${profile.loader && profile.loader.type !== 'vanilla' ? ' + ' + LOADER_NAMES[profile.loader.type] : ''}` });
+      return;
+    }
+    items.push({ mod: project, file: f, reason });
+    const deps = f.dependencies || [];
+    deps.filter((d) => d.dependency_type === 'incompatible' && installed.has(d.project_id)).forEach((d) => {
+      const other = profile.content.find((c) => c.projectId === d.project_id);
+      warnings.push(`${project.name} does not work with ${other ? other.name : 'a mod you have installed'}.`);
+    });
+    const required = deps.filter((d) => d.dependency_type === 'required');
+    if (!settings.get().autoDeps || !required.length) return;
+    const pinned = {};
+    for (const d of required) {
+      if (d.version_id) {
+        try {
+          const v = await MR.version(d.version_id);
+          pinned[v.modId] = v;
+          d.project_id = d.project_id || v.modId;
+        } catch (e) { /* fall back to best version */ }
+      }
+    }
+    const projects = await MR.projects(required.map((d) => d.project_id).filter(Boolean));
+    for (const dp of projects) await add(dp, pinned[dp.id] || null, `Needed by ${project.name}`);
+  }
+  await add(mod, chosenFile, 'selected');
+  return { items, warnings };
+}
+
+function planFor(profile, mod, file) {
+  return isModrinth(mod) ? mrPlanInstall(profile, mod, file) : planInstall(profile, mod, file);
 }
 
 async function downloadContent(profile, item, task) {
@@ -137,8 +184,39 @@ async function setEnabled(profile, item, enabled) {
 
 // Finds newer files for everything in a profile that is not locked.
 async function checkUpdates(profile) {
-  const items = profile.content.filter((c) => !c.locked && !c.manual && c.projectId);
+  const cf = await cfCheckUpdates(profile);
+  const mr = await mrCheckUpdates(profile);
+  return [...cf, ...mr];
+}
+
+async function mrCheckUpdates(profile) {
+  const items = profile.content.filter((c) => c.source === 'modrinth' && !c.locked && !c.manual && c.sha1);
   if (!items.length) return [];
+  const loaderType = profile.loader && profile.loader.type !== 'vanilla' ? profile.loader.type : null;
+  const mods = items.filter((c) => c.classId === 6);
+  const other = items.filter((c) => c.classId !== 6);
+  const found = {
+    ...(await MR.latestByHash(mods.map((c) => c.sha1), { loaders: loaderType ? (loaderType === 'quilt' ? ['quilt', 'fabric'] : [loaderType]) : [], gameVersions: [profile.mc] })),
+    ...(await MR.latestByHash(other.map((c) => c.sha1), { gameVersions: [profile.mc] })),
+  };
+  const out = [];
+  for (const item of items) {
+    const v = found[item.sha1];
+    if (!v || v.id === item.versionId) continue;
+    if (Date.parse(v.fileDate) <= Date.parse(item.fileDate || 0)) continue;
+    if (v.releaseType > (item.releaseType || 1) || !allowedReleaseTypes().includes(v.releaseType)) continue;
+    const mod = {
+      source: 'modrinth', id: item.projectId, slug: item.slug, name: item.name, classId: item.classId,
+      logo: { thumbnailUrl: item.logo }, authors: [{ name: item.author }], links: { websiteUrl: item.website },
+    };
+    out.push({ mod, item, file: v });
+  }
+  return out;
+}
+
+async function cfCheckUpdates(profile) {
+  const items = profile.content.filter((c) => c.source !== 'modrinth' && !c.locked && !c.manual && c.projectId);
+  if (!items.length || !CF.hasKey()) return [];
   const mods = await CF.mods(items.map((c) => c.projectId));
   const allowed = allowedReleaseTypes();
   const candidates = [];
@@ -199,7 +277,7 @@ function parseLoaderId(id, mc) {
 async function loaderVersions(mc, type) {
   if (type === 'vanilla') return [];
   let list = [];
-  try {
+  if (CF.hasKey()) try {
     const all = await CF.modloaders(mc);
     list = all
       .map((l) => ({ ...parseLoaderId(l.name, mc), latest: l.latest, recommended: l.recommended }))
@@ -214,6 +292,30 @@ async function loaderVersions(mc, type) {
       list = JSON.parse(r.text).map((x, i) => ({ type, version: x.loader.version, latest: i === 0, recommended: x.loader.stable !== false && i === 0 }));
     } catch (e) {
       log('warn', 'loader meta failed', e);
+    }
+  }
+  if (!list.length && type === 'forge') {
+    try {
+      const r = await httpRequest('https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json');
+      const promos = JSON.parse(r.text).promos || {};
+      const rec = promos[`${mc}-recommended`];
+      const latest = promos[`${mc}-latest`];
+      if (rec) list.push({ type, version: rec, recommended: true, latest: rec === latest });
+      if (latest && latest !== rec) list.push({ type, version: latest, latest: true, recommended: !rec });
+    } catch (e) {
+      log('warn', 'Forge versions failed', e);
+    }
+  }
+  if (!list.length && type === 'neoforge') {
+    try {
+      const r = await httpRequest('https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge');
+      const parts = mc.split('.');
+      const prefix = `${parts[1]}.${parts[2] || 0}.`;
+      const versions = (JSON.parse(r.text).versions || []).filter((v) => v.startsWith(prefix) && !/beta|alpha/i.test(v));
+      versions.sort((a, b) => cmpVersion(b, a));
+      list = versions.slice(0, 15).map((v, i) => ({ type, version: v, latest: i === 0, recommended: i === 0 }));
+    } catch (e) {
+      log('warn', 'NeoForge versions failed', e);
     }
   }
   list.sort((a, b) => cmpVersion(b.version, a.version));
@@ -437,6 +539,125 @@ async function installModpack({ mod = null, file = null, localPath = null, local
   }
 }
 
+// ---- Modrinth modpacks (.mrpack) ----
+
+function parseMrIndex(text) {
+  let m;
+  try { m = JSON.parse(text); } catch (e) { throw new Error('modrinth.index.json is not valid JSON'); }
+  if (!m || !m.dependencies || !Array.isArray(m.files)) throw new Error('This file is not a Modrinth modpack');
+  const d = m.dependencies;
+  const mc = d.minecraft;
+  let loader = { type: 'vanilla', version: '' };
+  if (d['fabric-loader']) loader = { type: 'fabric', version: d['fabric-loader'] };
+  else if (d['quilt-loader']) loader = { type: 'quilt', version: d['quilt-loader'] };
+  else if (d.neoforge) loader = { type: 'neoforge', version: d.neoforge };
+  else if (d.forge) loader = { type: 'forge', version: d.forge };
+  const files = m.files
+    .filter((f) => !f.env || f.env.client !== 'unsupported')
+    .filter((f) => f.path && !f.path.startsWith('/') && !f.path.split('/').includes('..'))
+    .map((f) => ({ path: f.path, sha1: f.hashes && f.hashes.sha1, sha512: f.hashes && f.hashes.sha512, url: (f.downloads || [])[0], size: f.fileSize || 0, optional: !!(f.env && f.env.client === 'optional') }));
+  return { name: m.name || 'Modpack', version: m.versionId || '', mc, loader, files };
+}
+
+async function installMrpack({ mod = null, file = null, localPath = null, localBytes = null }) {
+  const task = Tasks.add({ label: `Installing ${mod ? mod.name : 'modpack'}`, detail: 'Downloading pack', kind: 'modpack' });
+  let profile = null;
+  let zipPath = localPath;
+  try {
+    let index;
+    if (Native.available) {
+      if (!zipPath) {
+        zipPath = `${PROFILE_ROOT}/_tmp/pack-${file.id}.mrpack`;
+        await nativeDownload(file.downloadUrl, zipPath, {
+          sha1: fileSha1(file),
+          onProgress: (e) => Tasks.update(task, { detail: `Pack · ${fmtBytes(e.received)}${e.total ? ' of ' + fmtBytes(e.total) : ''}` }),
+        });
+      }
+      const text = await Native.call('zip.readText', { path: zipPath, entry: 'modrinth.index.json' });
+      if (!text) throw new Error('modrinth.index.json not found in the pack');
+      index = parseMrIndex(text);
+    } else {
+      let bytes = localBytes;
+      if (!bytes) {
+        const res = await fetch(file.downloadUrl);
+        if (!res.ok) throw new Error(`Download failed (${res.status})`);
+        bytes = new Uint8Array(await res.arrayBuffer());
+      }
+      const text = await zipOpen(bytes).readText('modrinth.index.json');
+      if (!text) throw new Error('modrinth.index.json not found in the pack');
+      index = parseMrIndex(text);
+    }
+
+    Tasks.update(task, { label: `Installing ${index.name}`, detail: 'Reading mod list' });
+    profile = await Profiles.create(newProfile({
+      name: index.name,
+      mc: index.mc,
+      loader: index.loader,
+      icon: mod ? modLogo(mod) : '',
+      modpack: mod
+        ? { source: 'modrinth', projectId: mod.id, fileId: file.id, name: mod.name, version: file.versionNumber || file.displayName || index.version, author: modAuthor(mod) }
+        : { source: 'modrinth', projectId: null, fileId: null, name: index.name, version: index.version, author: '' },
+    }));
+    task.profileId = profile.id;
+    profile.status = 'installing';
+    await Profiles.save(profile, { syncLauncher: false });
+
+    // Name the files: ask Modrinth which projects these hashes belong to
+    let byHash = {};
+    let projects = [];
+    try {
+      byHash = await MR.versionsByHash(index.files.map((f) => f.sha1).filter(Boolean));
+      projects = await MR.projects(Object.values(byHash).map((v) => v.modId));
+    } catch (e) {
+      log('warn', 'Could not identify pack files', e);
+    }
+    const items = index.files.map((f) => {
+      const slash = f.path.lastIndexOf('/');
+      const folder = slash > 0 ? f.path.slice(0, slash) : '.';
+      const fileName = f.path.slice(slash + 1);
+      const v = byHash[f.sha1];
+      const proj = v && projects.find((p) => p.id === v.modId);
+      const base = proj ? contentItem(proj, v) : {
+        source: 'modrinth', projectId: null, fileId: null, name: fileName.replace(/\.(jar|zip)$/i, ''), author: '', logo: '',
+        classId: folder === 'mods' ? 6 : folder === 'resourcepacks' ? 12 : folder === 'shaderpacks' ? 6552 : 6,
+        displayName: fileName, releaseType: 1, gameVersions: [], enabled: true, locked: false, added: Date.now(),
+      };
+      return { ...base, folder, fileName, sha1: f.sha1, sha512: f.sha512, url: f.url, size: f.size, manual: !f.url, fromPack: true, required: !f.optional };
+    });
+
+    Tasks.update(task, { steps: items.length, done: 0, detail: `0 of ${items.length} files` });
+    const failed = [];
+    await pool(items, 4, async (item) => {
+      if (!item.manual && Native.available) {
+        try {
+          await nativeDownload(item.url, contentPath(profile, item), { sha1: item.sha1 });
+        } catch (e) {
+          failed.push(item);
+          log('error', `Download failed: ${item.fileName}`, e);
+        }
+      }
+      Tasks.update(task, { done: task.done + 1, detail: `${task.done + 1} of ${items.length} files` });
+    });
+    profile.content = items.filter((i) => !failed.includes(i));
+    if (Native.available) {
+      Tasks.update(task, { detail: 'Copying pack settings' });
+      await Native.call('zip.extract', { path: zipPath, prefix: 'overrides', dest: profileDir(profile) });
+      await Native.call('zip.extract', { path: zipPath, prefix: 'client-overrides', dest: profileDir(profile) });
+    }
+    await Profiles.save(profile, { syncLauncher: false });
+    Tasks.finish(task, failed.length ? new Error(`${failed.length} file${failed.length === 1 ? '' : 's'} failed to download. Open the profile and use Repair.`) : null);
+    if (zipPath && !localPath && Native.available) await FS.remove(zipPath).catch(() => {});
+    return profile;
+  } catch (e) {
+    Tasks.finish(task, e);
+    if (profile) {
+      profile.status = 'broken';
+      await Profiles.save(profile, { syncLauncher: false }).catch(() => {});
+    }
+    throw e;
+  }
+}
+
 // Re-downloads anything missing from a profile folder
 async function repairProfile(profile) {
   if (!Native.available) return 0;
@@ -450,7 +671,7 @@ async function repairProfile(profile) {
     }
     Tasks.update(task, { steps: missing.length });
     await pool(missing, 4, async (item) => {
-      if (!item.url) {
+      if (!item.url && item.source !== 'modrinth') {
         const f = await CF.file(item.projectId, item.fileId);
         item.url = fileDownloadUrl(f);
       }
@@ -482,7 +703,7 @@ function buildManifest(profile) {
     name: profile.name,
     version: (profile.modpack && profile.modpack.version) || '1.0.0',
     author: (profile.modpack && profile.modpack.author) || 'Kiln',
-    files: profile.content.filter((c) => c.projectId && c.fileId).map((c) => ({ projectID: c.projectId, fileID: c.fileId, required: c.enabled !== false })),
+    files: profile.content.filter((c) => c.source !== 'modrinth' && c.projectId && c.fileId).map((c) => ({ projectID: c.projectId, fileID: c.fileId, required: c.enabled !== false })),
     overrides: 'overrides',
   };
 }
@@ -493,12 +714,49 @@ function buildModlist(profile) {
   return `<ul>\n${rows}\n</ul>\n`;
 }
 
-async function exportProfile(profile) {
-  const bytes = zipStore([
-    { name: 'manifest.json', data: JSON.stringify(buildManifest(profile), null, 2) },
-    { name: 'modlist.html', data: buildModlist(profile) },
-  ]);
-  const fileName = `${slugify(profile.name)}-${profile.mc}.zip`;
+// Modrinth pack index (.mrpack) for the Modrinth items in a profile
+function buildMrIndex(profile) {
+  const deps = { minecraft: profile.mc };
+  const { type, version } = profile.loader || {};
+  if (type === 'fabric') deps['fabric-loader'] = version;
+  if (type === 'quilt') deps['quilt-loader'] = version;
+  if (type === 'forge') deps.forge = version;
+  if (type === 'neoforge') deps.neoforge = version;
+  return {
+    formatVersion: 1,
+    game: 'minecraft',
+    versionId: (profile.modpack && profile.modpack.version) || '1.0.0',
+    name: profile.name,
+    summary: `Exported from Kiln`,
+    files: profile.content.filter((c) => c.source === 'modrinth' && c.url && c.sha1 && c.sha512 && c.enabled !== false).map((c) => ({
+      path: `${c.folder}/${c.fileName}`,
+      hashes: { sha1: c.sha1, sha512: c.sha512 },
+      env: { client: 'required', server: c.classId === 6 ? 'optional' : 'unsupported' },
+      downloads: [c.url],
+      fileSize: c.size || 0,
+    })),
+    dependencies: deps,
+  };
+}
+
+function exportFormats(profile) {
+  const cf = profile.content.filter((c) => c.source !== 'modrinth').length;
+  const mr = profile.content.filter((c) => c.source === 'modrinth').length;
+  const out = [];
+  if (cf || !mr) out.push('curseforge');
+  if (mr) out.push('modrinth');
+  return out;
+}
+
+async function exportProfile(profile, format = 'curseforge') {
+  const mr = format === 'modrinth';
+  const bytes = mr
+    ? zipStore([{ name: 'modrinth.index.json', data: JSON.stringify(buildMrIndex(profile), null, 2) }])
+    : zipStore([
+      { name: 'manifest.json', data: JSON.stringify(buildManifest(profile), null, 2) },
+      { name: 'modlist.html', data: buildModlist(profile) },
+    ]);
+  const fileName = `${slugify(profile.name)}-${profile.mc}.${mr ? 'mrpack' : 'zip'}`;
   if (Native.available) {
     const path = `${PROFILE_ROOT}/_exports/${fileName}`;
     await FS.writeBase64(path, b64FromBytes(bytes));

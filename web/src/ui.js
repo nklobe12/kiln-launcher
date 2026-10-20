@@ -211,10 +211,10 @@ function projectRow(mod, { action, context } = {}) {
   const versions = projectVersions(mod);
   const loaders = projectLoaders(mod);
   const row = h('div.proj', {
-    onclick: (e) => { if (!e.target.closest('button,a')) go(`#/project/${mod.id}${context ? '?for=' + encodeURIComponent(context) : ''}`); },
+    onclick: (e) => { if (!e.target.closest('button,a')) go(projectHref(mod, context)); },
     role: 'link',
     tabindex: '0',
-    onkeydown: (e) => { if (e.key === 'Enter' && e.target === row) go(`#/project/${mod.id}`); },
+    onkeydown: (e) => { if (e.key === 'Enter' && e.target === row) go(projectHref(mod, context)); },
   },
   img(modLogo(mod), 'proj-logo'),
   h('div.proj-body',
@@ -230,7 +230,7 @@ function projectRow(mod, { action, context } = {}) {
 }
 
 function projectTile(mod, context) {
-  return h('div.tile', { onclick: () => go(`#/project/${mod.id}${context ? '?for=' + encodeURIComponent(context) : ''}`), role: 'link', tabindex: '0' },
+  return h('div.tile', { onclick: () => go(projectHref(mod, context)), role: 'link', tabindex: '0' },
     img(modLogo(mod), '', ''),
     h('div', h('strong', { style: { display: 'block' } }, mod.name), h('span.muted.num', `${fmtNum(mod.downloadCount)} downloads`)));
 }

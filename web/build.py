@@ -18,6 +18,7 @@ JS_ORDER = [
     "icons.js",
     "native.js",
     "curseforge.js",
+    "modrinth.js",
     "zip.js",
     "store.js",
     "install.js",

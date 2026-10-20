@@ -84,11 +84,6 @@ async function viewProfiles() {
 }
 
 async function createProfileSheet(preset = {}) {
-  if (!CF.hasKey()) {
-    toast('Add your CurseForge API key in Settings first', { error: true });
-    go('#/settings');
-    return null;
-  }
   let versions = [];
   try { versions = await mcReleaseVersions(); } catch (e) { toast(e.message, { error: true }); return null; }
   const state = { name: preset.name || '', mc: preset.mc || versions[0], type: preset.loader || 'fabric', version: '' };
@@ -158,6 +153,15 @@ async function createProfileSheet(preset = {}) {
 }
 
 function compatibility(mod, p) {
+  if (isModrinth(mod)) {
+    if (mod.gameVersions.length && !mod.gameVersions.includes(p.mc)) return { ok: false, why: `No ${p.mc} file` };
+    if (mod.classId === 6) {
+      const type = p.loader && p.loader.type !== 'vanilla' ? p.loader.type : null;
+      if (!type) return { ok: false, why: 'Needs a mod loader' };
+      if (mod.loaders.length && !mod.loaders.includes(type) && !(type === 'quilt' && mod.loaders.includes('fabric'))) return { ok: false, why: `Not for ${LOADER_NAMES[type]}` };
+    }
+    return { ok: true };
+  }
   if (mod.classId !== 6 && mod.classId !== 12 && mod.classId !== 6552 && mod.classId !== 6945 && mod.classId !== 17) return { ok: true };
   const versions = projectVersions(mod);
   if (versions.length && !versions.includes(p.mc)) return { ok: false, why: `No ${p.mc} file` };
@@ -193,7 +197,9 @@ async function chooseProfileAndInstall(mod, file = null) {
         onclick: async () => {
           s.close();
           const versions = projectVersions(mod);
-          const loaders = (mod.latestFilesIndexes || []).filter((i) => i.gameVersion === versions[0]).map((i) => i.modLoader);
+          const loaders = isModrinth(mod)
+            ? mod.loaders.map((l) => LOADER_KEYS[l])
+            : (mod.latestFilesIndexes || []).filter((i) => i.gameVersion === versions[0]).map((i) => i.modLoader);
           const loader = mod.classId === 6 ? (loaders.includes(4) ? 'fabric' : loaders.includes(6) ? 'neoforge' : loaders.includes(1) ? 'forge' : loaders.includes(5) ? 'quilt' : 'fabric') : 'vanilla';
           const p = await createProfileSheet({ name: '', mc: versions[0], loader, stay: true });
           if (p) {
@@ -211,7 +217,7 @@ async function installInto(profile, mod, file = null, button = null) {
     button.replaceChildren(icon('spinner', 16, 'spin'), 'Checking');
   }
   try {
-    const plan = await planInstall(profile, mod, file);
+    const plan = await planFor(profile, mod, file);
     const blocked = plan.items.filter((i) => !i.file);
     const ready = plan.items.filter((i) => i.file);
     const manual = ready.filter((i) => !fileDownloadUrl(i.file));
@@ -242,8 +248,17 @@ async function installInto(profile, mod, file = null, button = null) {
 }
 
 async function startModpackInstall(mod, file = null) {
-  if (!CF.hasKey()) return go('#/settings');
+  if (!isModrinth(mod) && !CF.hasKey()) return go('#/settings');
   let chosen = file;
+  if (!chosen && isModrinth(mod)) {
+    try {
+      const versions = await MR.versions(mod.id);
+      const sorted = versions.sort((a, b) => Date.parse(b.fileDate) - Date.parse(a.fileDate));
+      chosen = sorted.find((f) => allowedReleaseTypes().includes(f.releaseType)) || sorted[0];
+    } catch (e) {
+      return toast(e.message, { error: true });
+    }
+  }
   if (!chosen) {
     const files = (mod.latestFiles || []).filter((f) => !f.isServerPack).sort((a, b) => Date.parse(b.fileDate) - Date.parse(a.fileDate));
     chosen = files.find((f) => allowedReleaseTypes().includes(f.releaseType)) || files[0];
@@ -261,7 +276,7 @@ async function startModpackInstall(mod, file = null) {
   toast(`Installing ${mod.name}…`);
   go('#/downloads');
   try {
-    const p = await installModpack({ mod, file: chosen });
+    const p = isModrinth(mod) ? await installMrpack({ mod, file: chosen }) : await installModpack({ mod, file: chosen });
     await afterModpackInstalled(p);
   } catch (e) {
     toast(e.message || String(e), { error: true });
@@ -288,7 +303,8 @@ async function importModpackFlow() {
     if (!picked || !picked.length) return;
     go('#/downloads');
     try {
-      const p = await installModpack({ localPath: picked[0].path });
+      const isMr = !!(await Native.call('zip.readText', { path: picked[0].path, entry: 'modrinth.index.json' }).catch(() => null));
+      const p = isMr ? await installMrpack({ localPath: picked[0].path }) : await installModpack({ localPath: picked[0].path });
       await FS.remove(picked[0].path).catch(() => {});
       await afterModpackInstalled(p);
     } catch (e) {
@@ -296,13 +312,14 @@ async function importModpackFlow() {
     }
     return;
   }
-  const input = h('input', { type: 'file', accept: '.zip,application/zip' });
+  const input = h('input', { type: 'file', accept: '.zip,.mrpack,application/zip' });
   input.addEventListener('change', async () => {
     const f = input.files[0];
     if (!f) return;
     try {
       const bytes = new Uint8Array(await f.arrayBuffer());
-      const p = await installModpack({ localBytes: bytes });
+      const isMr = zipOpen(bytes).names.includes('modrinth.index.json');
+      const p = isMr ? await installMrpack({ localBytes: bytes }) : await installModpack({ localBytes: bytes });
       await afterModpackInstalled(p);
     } catch (e) {
       toast(e.message || String(e), { error: true });
@@ -398,7 +415,7 @@ function contentMenu(p, c) {
         h('dt', 'Published'), h('dd', fmtDate(c.fileDate)),
         h('dt', 'Folder'), h('dd.mono', c.folder)),
       h('div.stack', { style: { gap: '8px' } },
-        h('button.btn', { onclick: () => { s.close(); go(`#/project/${c.projectId}?for=${p.id}`); } }, icon('info', 18), 'View project'),
+        c.projectId ? h('button.btn', { onclick: () => { s.close(); go(contentHref(c, p.id)); } }, icon('info', 18), 'View project') : null,
         h('button.btn', { onclick: async () => { c.locked = !c.locked; await Profiles.save(p, { syncLauncher: false }); s.close(); render(); } }, icon(c.locked ? 'unlock' : 'lock', 18), c.locked ? 'Unlock updates' : 'Lock this version'),
         h('button.btn.btn-danger', {
           onclick: async () => {
@@ -446,7 +463,7 @@ function profileMenu(p) {
     title: p.name,
     body: h('div.stack', { style: { gap: '8px' } },
       h('button.btn', { onclick: async () => { s.close(); const n = await promptSheet({ title: 'Rename profile', label: 'Name', value: p.name }); if (n) { await Profiles.rename(p, n); render(); } } }, 'Rename'),
-      h('button.btn', { onclick: async () => { s.close(); try { const r = await exportProfile(p); toast(Native.available ? 'Export ready to share' : `Saved ${r}`); } catch (e) { toast(e.message, { error: true }); } } }, icon('share', 18), 'Export as CurseForge zip'),
+      exportFormats(p).map((fmt) => h('button.btn', { onclick: async () => { s.close(); try { const r = await exportProfile(p, fmt); toast(Native.available ? 'Export ready to share' : `Saved ${r}`); } catch (e) { toast(e.message, { error: true }); } } }, icon('share', 18), fmt === 'modrinth' ? 'Export as Modrinth .mrpack' : 'Export as CurseForge zip')),
       Native.available ? h('button.btn', { onclick: async () => { s.close(); try { const n = await repairProfile(p); toast(n ? `Restored ${n} file${n === 1 ? '' : 's'}` : 'No missing files'); } catch (e) { toast(e.message, { error: true }); } } }, icon('refresh', 18), 'Repair missing files') : null,
       Native.available && p.loader.type !== 'vanilla' ? h('button.btn', { onclick: async () => { s.close(); p.status = 'new'; p.versionId = ''; await Profiles.save(p, { syncLauncher: false }); try { const st = await installLoader(p); toast(st === 'ready' ? 'Loader reinstalled' : 'Installer started'); } catch (e) { toast(e.message, { error: true }); } render(); } }, icon('cpu', 18), `Reinstall ${LOADER_NAMES[p.loader.type]}`) : null,
       h('button.btn.btn-danger', {

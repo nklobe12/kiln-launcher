@@ -1,5 +1,6 @@
 // Sample CurseForge-shaped data for UI tests. Every project here is invented.
 import crypto from 'node:crypto';
+import { buildModrinth } from './fixtures-modrinth.mjs';
 
 const MC = ['1.21.1', '1.21', '1.20.6', '1.20.4', '1.20.1', '1.19.2', '1.18.2', '1.16.5', '1.12.2'];
 const LOADER_ID = { forge: 1, fabric: 4, quilt: 5, neoforge: 6 };
@@ -179,7 +180,10 @@ export function buildFixtures() {
   ];
   games.forEach((g, i) => blobs.set(g.assets.iconUrl, { type: 'image/svg+xml', body: Buffer.from(logoSvg(g.name, i + 2)) }));
 
+  const modrinth = buildModrinth();
   function handle({ url, method = 'GET', headers = {}, body = null }) {
+    const mr = modrinth.handle({ url, method, body });
+    if (mr) return mr;
     const u = new URL(url);
     if (blobs.has(u.origin + u.pathname)) return { status: 200, ...blobs.get(u.origin + u.pathname) };
     if (u.hostname === 'meta.fabricmc.net' || u.hostname === 'meta.quiltmc.org') {

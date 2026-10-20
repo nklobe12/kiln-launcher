@@ -4,6 +4,7 @@ const ROUTES = {
   '': viewHome,
   browse: viewBrowse,
   project: viewProject,
+  mr: viewMrProject,
   profiles: viewProfiles,
   profile: viewProfile,
   downloads: viewDownloads,
@@ -13,7 +14,7 @@ const ROUTES = {
 };
 const NAV = [
   { key: '', label: 'Home', icon: 'home', href: '#/' },
-  { key: 'browse', label: 'Browse', icon: 'browse', href: '#/browse' },
+  { key: 'browse', label: 'Browse', icon: 'browse', href: '#/browse', match: ['project', 'mr'] },
   { key: 'profiles', label: 'Profiles', icon: 'layers', href: '#/profiles', match: ['profile'] },
   { key: 'downloads', label: 'Downloads', icon: 'download', href: '#/downloads' },
   { key: 'settings', label: 'Settings', icon: 'settings', href: '#/settings', match: ['logs'] },
@@ -58,8 +59,9 @@ function drawTopbar(route) {
     const v = input.value.trim();
     const r = parseRoute();
     const forId = r.query.for ? `&for=${encodeURIComponent(r.query.for)}` : '';
-    const cls = r.name === 'browse' && r.params[0] ? r.params[0] : isMinecraft() ? (r.query.for ? 'mc-mods' : 'mc-mods') : '';
-    go(`#/browse${cls ? '/' + cls : ''}?q=${encodeURIComponent(v)}${forId}`);
+    const cls = r.name === 'browse' && r.params[0] ? r.params[0] : isMinecraft() ? 'mc-mods' : '';
+    const src = r.name === 'browse' && r.query.src ? `&src=${r.query.src}` : '';
+    go(`#/browse${cls ? '/' + cls : ''}?q=${encodeURIComponent(v)}${forId}${src}`);
     input.blur();
   });
   const game = currentGame;

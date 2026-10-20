@@ -56,7 +56,7 @@ async function viewSettings() {
     h('div.field', h('label', { for: 'set-key' }, 'API key'),
       h('div.row', { style: { flexWrap: 'nowrap' } }, keyInput,
         h('button.btn.btn-icon', { onclick: () => { keyInput.type = keyInput.type === 'password' ? 'text' : 'password'; }, 'aria-label': 'Show or hide key' }, icon('key', 18)))),
-    h('div.hint', 'Get a free key at ', h('a', { href: 'https://console.curseforge.com/', target: '_blank', rel: 'noopener' }, 'console.curseforge.com'), '. It stays on this device.'),
+    h('div.hint', 'Get a free key at ', h('a', { href: 'https://console.curseforge.com/', target: '_blank', rel: 'noopener' }, 'console.curseforge.com'), '. It stays on this device. Modrinth works without a key.'),
     h('div.row',
       h('button.btn.btn-primary.btn-sm', { onclick: async () => { settings.set({ apiKey: keyInput.value.trim() }); await testKey(); } }, 'Save and test'),
       s.apiKey ? h('button.btn.btn-sm.btn-ghost', { onclick: () => { settings.set({ apiKey: '' }); render(); } }, 'Remove key') : null),

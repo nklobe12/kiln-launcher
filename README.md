@@ -36,9 +36,11 @@ Mod loaders:
 - **Fabric** and **Quilt**: Kiln writes the loader's version JSON directly, which takes seconds.
 - **Forge** and **NeoForge**: Kiln downloads the official installer and runs it in Java. On iPhone you reopen Kiln afterwards.
 
-## CurseForge API key
+## Mod sources
 
-The CurseForge API needs a key. You can get one free at [console.curseforge.com](https://console.curseforge.com/). Then either:
+Kiln browses and installs from two sources:
+- **Modrinth** needs no key and works as soon as you open the app. It's the default until a CurseForge key is set. Kiln installs `.mrpack` modpacks and exports profiles as `.mrpack`.
+- **CurseForge** needs an API key. You can get one free at [console.curseforge.com](https://console.curseforge.com/). Then either:
 - paste it into **Settings → CurseForge** in the app, or
 - add it as a repository secret named `CURSEFORGE_API_KEY`. CI then builds it into the apps.
 

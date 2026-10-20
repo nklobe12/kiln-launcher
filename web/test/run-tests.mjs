@@ -89,9 +89,9 @@ async function confirmSheet(page, label) {
 console.log('iPhone (iOS bridge)');
 {
   const { ctx, page, errors } = await newPage('ios');
-  await step('opens with a CurseForge key prompt', async () => {
+  await step('opens with Modrinth content before any key is set', async () => {
     await page.goto(htmlUrl);
-    await page.waitForSelector('text=Connect to CurseForge');
+    await page.waitForSelector('text=These come from Modrinth');
     expect(await page.locator('body.native').count() === 1, 'body should be marked native');
     await shot(page, '01-ios-first-run');
   });
@@ -264,6 +264,107 @@ console.log('iPhone (iOS bridge)');
   await step('no script errors', async () => {
     expect(!errors.length, errors.join('\n'));
   });
+  await ctx.close();
+}
+
+// ---------------- Modrinth, no CurseForge key ----------------
+console.log('Modrinth (no CurseForge key)');
+{
+  const { ctx, page, errors } = await newPage('ios');
+  await step('home loads Modrinth modpacks without any key', async () => {
+    await page.goto(htmlUrl);
+    await page.waitForSelector('.tile');
+    expect(await page.locator('.tile', { hasText: 'Moss Hollow' }).count() === 1, 'Moss Hollow tile missing');
+    expect(await page.locator('text=These come from Modrinth').count() === 1, 'Modrinth notice missing');
+    await shot(page, '50-mr-home');
+  });
+  await step('browse defaults to Modrinth and searches', async () => {
+    await page.goto(htmlUrl + '#/browse/mc-mods');
+    await page.waitForSelector('text=on Modrinth');
+    await page.fill('#browse-q', 'lumina');
+    await page.press('#browse-q', 'Enter');
+    await page.waitForSelector('text=2 results on Modrinth');
+    expect(await page.locator('.proj').count() === 2, 'expected Lumina and Core Lib');
+    await shot(page, '51-mr-browse');
+  });
+  await step('Modrinth project page renders markdown safely', async () => {
+    await page.goto(htmlUrl + '#/mr/AAAA0001');
+    await page.waitForSelector('h1:has-text("Lumina")');
+    await page.waitForSelector('.desc h2:has-text("About Lumina")');
+    expect(await page.locator('.desc strong', { hasText: 'phones and tablets' }).count() === 1, 'markdown bold missing');
+    expect(await page.locator('.desc script').count() === 0, 'script must be stripped');
+    expect(await page.locator('text=by glowworks').count() >= 1, 'author missing');
+    await shot(page, '52-mr-project');
+    await page.click('.tab:has-text("Versions")');
+    await page.waitForSelector('.citem:has-text("Lumina 2.2.0")');
+  });
+  await step('creates a Fabric profile with no CurseForge key', async () => {
+    await page.goto(htmlUrl + '#/profiles');
+    await page.click('button:has-text("New profile")');
+    await page.fill('#np-name', 'Moss Test');
+    await page.waitForSelector('#np-lv');
+    await confirmSheet(page, 'Create');
+    await page.waitForSelector('h1:has-text("Moss Test")');
+    const n = await native(page);
+    expect(n.files.includes('versions/fabric-loader-0.16.5-1.21.1/fabric-loader-0.16.5-1.21.1.json'), 'fabric json missing');
+  });
+  await step('installs a Modrinth mod with its required library', async () => {
+    await page.click('a:has-text("Add content")');
+    await page.waitForSelector('.addbar');
+    await page.waitForSelector('text=on Modrinth');
+    const row = page.locator('.proj').filter({ has: page.locator('.proj-title strong', { hasText: /^Lumina$/ }) });
+    await row.locator('button:has-text("Install")').click();
+    await page.waitForSelector('.sheet >> text=Core Lib');
+    await confirmSheet(page, 'Install 2');
+    await row.locator('text=Installed').waitFor({ timeout: 8000 });
+    const n = await native(page);
+    const mods = n.files.filter((f) => f.startsWith('kiln/moss-test/mods/'));
+    expect(mods.includes('kiln/moss-test/mods/lumina-2.2.0.jar') && mods.includes('kiln/moss-test/mods/core-lib-1.5.0.jar'), 'jars missing: ' + mods);
+  });
+  await step('updates a Modrinth mod', async () => {
+    await page.goto(htmlUrl + '#/mr/AAAA0003/files?for=moss-test');
+    await page.waitForSelector('.citem:has-text("Tidy Inventory 3.0.0")');
+    await page.locator('.citem').filter({ has: page.locator('strong', { hasText: /^Tidy Inventory 3\.0\.0$/ }) }).locator('button:has-text("Install")').click();
+    await page.waitForSelector('.toast >> text=Installed Tidy Inventory');
+    await page.goto(htmlUrl + '#/profile/moss-test');
+    await page.click('button:has-text("Check for updates")');
+    await page.waitForSelector('text=1 update available');
+    await page.click('button:has-text("Update all")');
+    await page.waitForSelector('.toast >> text=Updated');
+    const n = await native(page);
+    const tid = n.files.filter((f) => f.includes('tidy-inventory'));
+    expect(tid.length === 1 && tid[0].endsWith('tidy-inventory-3.1.0.jar'), 'expected 3.1.0 only: ' + tid);
+  });
+  await step('installs a Modrinth modpack (.mrpack)', async () => {
+    await page.goto(htmlUrl + '#/mr/AAAA0006');
+    await page.waitForSelector('h1:has-text("Moss Hollow")');
+    await page.click('.phead-actions button:has-text("Install")');
+    await confirmSheet(page, 'Install');
+    await page.waitForURL(/#\/profile\/moss-hollow/, { timeout: 15000 });
+    await page.waitForSelector('.citem');
+    const n = await native(page);
+    const files = n.files.filter((f) => f.startsWith('kiln/moss-hollow/'));
+    for (const want of ['mods/lumina-2.2.0.jar', 'mods/core-lib-1.5.0.jar', 'mods/tidy-inventory-3.1.0.jar', 'resourcepacks/pastel-32x-1.0.0.zip', 'mods/handmade-tweaks.jar', 'config/lumina.json5', 'options.txt']) {
+      expect(files.includes('kiln/moss-hollow/' + want), 'missing ' + want + ' in ' + files);
+    }
+    expect(!files.some((f) => f.includes('server-only')), 'server-only file should be skipped');
+    expect(await page.locator('.citem', { hasText: 'Lumina' }).count() >= 1, 'identified mod names missing');
+    const meta = JSON.parse(await readFile(page, 'kiln/moss-hollow/kiln.json'));
+    expect(meta.status === 'ready' && meta.loader.type === 'fabric' && meta.content.length === 5, 'pack meta wrong: ' + meta.status + ' ' + meta.content.length);
+    await shot(page, '53-mr-modpack-profile');
+  });
+  await step('exports a .mrpack and plays', async () => {
+    await page.click('button[aria-label="More actions"]');
+    await page.click('button:has-text("Export as Modrinth .mrpack")');
+    await page.waitForSelector('.toast >> text=Export ready to share');
+    let n = await native(page);
+    expect(n.files.includes('kiln/_exports/moss-hollow-1.21.1.mrpack'), 'mrpack export missing');
+    const index = await page.evaluate(async () => JSON.parse(await window.webkit.messageHandlers.kiln.postMessage({ method: 'zip.readText', params: { path: 'kiln/_exports/moss-hollow-1.21.1.mrpack', entry: 'modrinth.index.json' } })));
+    expect(index.dependencies['fabric-loader'] === '0.16.5' && index.files.length === 5, 'index wrong: ' + index.files.length);
+    await page.click('.phead-actions button:has-text("Play")');
+    await page.waitForSelector('.toast >> text=Starting Moss Hollow');
+  });
+  await step('no script errors', async () => { expect(!errors.length, errors.join('\n')); });
   await ctx.close();
 }
 
